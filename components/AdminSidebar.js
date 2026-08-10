@@ -1,0 +1,4 @@
+'use client';
+import Link from 'next/link'; import {usePathname} from 'next/navigation';
+const items=[['/admin','Dashboard','▦'],['/admin/apps','Apps','▣'],['/admin/categories','Categories','⌗'],['/admin/pages','Pages','▤'],['/admin/contact-messages','Contact Messages','✉'],['/admin/settings','Settings','⚙']];
+export default function AdminSidebar(){ const p=usePathname(); return <aside className="admin-sidebar"><Link className="admin-brand" href="/admin"><span className="brand-mark">A</span> APKMarket CMS</Link><nav>{items.map(([href,label,icon])=><Link key={href} className={p===href||href!='/admin'&&p.startsWith(href)?'active':''} href={href}><span>{icon}</span>{label}</Link>)}</nav><button className="logout" onClick={async()=>{await fetch('/api/admin/logout',{method:'POST'});location.href='/admin/login'}}>Sign out</button></aside> }

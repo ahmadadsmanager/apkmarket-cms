@@ -1,0 +1,2 @@
+import Header from '@/components/Header';import Footer from '@/components/Footer';import AppCard from '@/components/AppCard';import {getApps} from '@/lib/db';
+export const metadata={title:'Latest Updates'};export default async function Page(){const apps=await getApps({limit:100});return <><Header/><main className="container page-shell"><div className="page-head"><h1>Latest Updates</h1><p>Recently added and updated app listings.</p></div><div className="app-grid">{apps.map(a=><AppCard app={a} key={a.id}/>)}</div></main><Footer/></>}

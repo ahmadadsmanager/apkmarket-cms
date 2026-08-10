@@ -1,0 +1,2 @@
+import {cookies} from 'next/headers';import {redirect} from 'next/navigation';import AdminSidebar from '@/components/AdminSidebar';import {cookieName,verifySession} from '@/lib/auth';
+export const metadata={title:'CMS'};export default async function Layout({children}){const store=await cookies();const ok=verifySession(store.get(cookieName())?.value);return <div className="admin-body">{ok?<div className="admin-layout"><AdminSidebar/><main className="admin-main">{children}</main></div>:children}</div>}
