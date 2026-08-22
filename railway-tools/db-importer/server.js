@@ -86,10 +86,18 @@ function readChunkSeries(prefix) {
 }
 
 function sqlFromEnvChunks() {
+  if (process.env.SQL_DUMP_BR_B64) {
+    console.log('[IMPORT] loaded single Brotli SQL variable');
+    return brotliDecompressSync(Buffer.from(process.env.SQL_DUMP_BR_B64, 'base64')).toString('utf8');
+  }
   const brParts = readChunkSeries('SQL_DUMP_BR_B64_');
   if (brParts.length) {
     console.log('[IMPORT] loaded Brotli SQL chunks', brParts.length);
     return brotliDecompressSync(Buffer.from(brParts.join(''), 'base64')).toString('utf8');
+  }
+  if (process.env.SQL_DUMP_GZ_B64) {
+    console.log('[IMPORT] loaded single gzip SQL variable');
+    return gunzipSync(Buffer.from(process.env.SQL_DUMP_GZ_B64, 'base64')).toString('utf8');
   }
   const gzParts = readChunkSeries('SQL_DUMP_GZ_B64_');
   if (gzParts.length) {
@@ -142,7 +150,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     try {
       const sql = sqlFromEnvChunks();
       if (!sql) {
-        state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL dump chunks' };
+        state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL dump data' };
         console.error('[IMPORT_RESULT]', JSON.stringify(state));
       } else {
         await importSql(sql);
