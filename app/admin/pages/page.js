@@ -1,1 +1,0 @@
-import {protectAdmin} from '@/lib/admin-page';import {getPages} from '@/lib/db';import PagesAdmin from '@/components/PagesAdmin';export default async function Page(){await protectAdmin();const pages=await getPages();return <><div className="admin-top"><div><h1>Pages</h1><p>Edit About, Privacy, Terms and other basic pages.</p></div></div><PagesAdmin pages={pages}/></>}

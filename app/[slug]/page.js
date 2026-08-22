@@ -1,4 +1,0 @@
-import Header from '@/components/Header';import Footer from '@/components/Footer';import {getPage} from '@/lib/db';import {notFound} from 'next/navigation';
-const reserved=['admin','api','app','apps','games','latest','categories','category','search','contact-us'];
-export async function generateMetadata({params}){const{slug}=await params;if(reserved.includes(slug))return{};const p=await getPage(slug);return p?{title:p.seo_title||p.title,description:p.meta_description||''}:{}}
-export default async function Page({params}){const{slug}=await params;if(reserved.includes(slug))notFound();const p=await getPage(slug);if(!p)notFound();return <><Header/><main className="container page-shell"><div className="page-head"><h1>{p.title}</h1></div><article className="content-card rich-content" dangerouslySetInnerHTML={{__html:p.content_html||''}}/></main><Footer/></>}
