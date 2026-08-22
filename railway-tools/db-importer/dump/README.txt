@@ -1,0 +1,1 @@
+SiteWatch SQL dump chunks are base64-encoded Brotli data used only for migration verification. They may be removed after the database import is verified.
