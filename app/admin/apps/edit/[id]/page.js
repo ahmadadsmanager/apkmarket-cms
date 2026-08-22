@@ -1,2 +1,0 @@
-import {protectAdmin} from '@/lib/admin-page';import {getCategories,getAppById} from '@/lib/db';import AppForm from '@/components/AppForm';import {notFound} from 'next/navigation';
-export default async function Page({params}){await protectAdmin();const{id}=await params;const[a,cats]=await Promise.all([getAppById(id),getCategories()]);if(!a)notFound();return <><div className="admin-top"><div><h1>Edit App</h1><p>{a.title}</p></div><a className="ghost-btn" target="_blank" href={`/app/${a.slug}`}>Preview ↗</a></div><AppForm initial={a} categories={cats}/></>}

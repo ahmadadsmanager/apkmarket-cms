@@ -1,2 +1,0 @@
-import {protectAdmin} from '@/lib/admin-page';import {getAllAppsAdmin} from '@/lib/db';import AdminAppsTable from '@/components/AdminAppsTable';
-export default async function Page(){await protectAdmin();const apps=await getAllAppsAdmin();return <><div className="admin-top"><div><h1>Apps</h1><p>Create, edit and organise all app listings.</p></div><a className="primary-btn" href="/admin/apps/new">+ Add App</a></div><AdminAppsTable apps={apps}/></>}
