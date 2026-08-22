@@ -1,5 +1,5 @@
 const http = require('http');
-const { gunzipSync } = require('zlib');
+const { gunzipSync, brotliDecompressSync } = require('zlib');
 const mysql = require('mysql2/promise');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -74,17 +74,29 @@ async function importSql(sql) {
   }
 }
 
-function sqlFromEnvChunks() {
+function readChunkSeries(prefix) {
   const parts = [];
   for (let i = 1; i <= 999; i++) {
-    const key = `SQL_DUMP_GZ_B64_${String(i).padStart(3, '0')}`;
+    const key = `${prefix}${String(i).padStart(3, '0')}`;
     const value = process.env[key];
     if (!value) break;
     parts.push(value);
   }
-  if (!parts.length) return null;
-  console.log('[IMPORT] loaded SQL chunks', parts.length);
-  return gunzipSync(Buffer.from(parts.join(''), 'base64')).toString('utf8');
+  return parts;
+}
+
+function sqlFromEnvChunks() {
+  const brParts = readChunkSeries('SQL_DUMP_BR_B64_');
+  if (brParts.length) {
+    console.log('[IMPORT] loaded Brotli SQL chunks', brParts.length);
+    return brotliDecompressSync(Buffer.from(brParts.join(''), 'base64')).toString('utf8');
+  }
+  const gzParts = readChunkSeries('SQL_DUMP_GZ_B64_');
+  if (gzParts.length) {
+    console.log('[IMPORT] loaded gzip SQL chunks', gzParts.length);
+    return gunzipSync(Buffer.from(gzParts.join(''), 'base64')).toString('utf8');
+  }
+  return null;
 }
 
 const server = http.createServer((req, res) => {
@@ -130,7 +142,7 @@ server.listen(PORT, '0.0.0.0', async () => {
     try {
       const sql = sqlFromEnvChunks();
       if (!sql) {
-        state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL_DUMP_GZ_B64_001' };
+        state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL dump chunks' };
         console.error('[IMPORT_RESULT]', JSON.stringify(state));
       } else {
         await importSql(sql);
