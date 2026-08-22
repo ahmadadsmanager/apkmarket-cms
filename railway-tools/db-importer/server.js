@@ -1,4 +1,5 @@
 const http = require('http');
+const { gunzipSync } = require('zlib');
 const mysql = require('mysql2/promise');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -50,6 +51,18 @@ async function importSql(sql) {
   }
 }
 
+function sqlFromEnvChunks() {
+  const parts = [];
+  for (let i = 1; i <= 999; i++) {
+    const key = `SQL_DUMP_GZ_B64_${String(i).padStart(3, '0')}`;
+    const value = process.env[key];
+    if (!value) break;
+    parts.push(value);
+  }
+  if (!parts.length) return null;
+  return gunzipSync(Buffer.from(parts.join(''), 'base64')).toString('utf8');
+}
+
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   if (req.url === '/health' && req.method === 'GET') {
@@ -73,8 +86,7 @@ const server = http.createServer((req, res) => {
       else chunks.push(c);
     });
     req.on('end', async () => {
-      const sql = Buffer.concat(chunks).toString('utf8');
-      const result = await importSql(sql);
+      const result = await importSql(Buffer.concat(chunks).toString('utf8'));
       res.statusCode = result.status === 'success' ? 200 : 500;
       res.end(JSON.stringify(result, null, 2));
     });
@@ -88,4 +100,16 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ service: 'railway-db-importer', status: state.status }));
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`Importer listening on ${PORT}`));
+server.listen(PORT, '0.0.0.0', async () => {
+  console.log(`Importer listening on ${PORT}`);
+  if (process.env.AUTO_IMPORT === '1') {
+    try {
+      const sql = sqlFromEnvChunks();
+      if (!sql) state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL_DUMP_GZ_B64_001' };
+      else await importSql(sql);
+    } catch (err) {
+      state = { status: 'failed', message: 'Failed to decode/import SQL chunks', verification: null, error: err && (err.stack || err.message) || String(err) };
+      console.error(state.error);
+    }
+  }
+});
