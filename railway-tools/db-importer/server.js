@@ -26,18 +26,39 @@ async function verify(conn) {
   return { database: process.env.DB_NAME, tableCount: rows.length, tables: out };
 }
 
+async function resetDatabase(conn) {
+  const [rows] = await conn.query(`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()`);
+  if (!rows.length) return;
+  await conn.query('SET FOREIGN_KEY_CHECKS=0');
+  try {
+    for (const row of rows) await conn.query('DROP TABLE IF EXISTS ??', [row.TABLE_NAME]);
+  } finally {
+    await conn.query('SET FOREIGN_KEY_CHECKS=1');
+  }
+}
+
+function makeMysqlCompatible(sql) {
+  // cPanel dumps were produced by MariaDB. MySQL 9 rejects non-NULL defaults on TEXT/BLOB columns.
+  sql = sql.replace(/\b((?:tiny|medium|long)?text|(?:tiny|medium|long)?blob)\s+DEFAULT\s+'(?:''|[^'])*'/gi, '$1');
+  sql = sql.replace(/\b((?:tiny|medium|long)?text|(?:tiny|medium|long)?blob)\s+DEFAULT\s+"(?:""|[^"])*"/gi, '$1');
+  sql = sql.replace(/^CREATE DATABASE[^;]*;\s*$/gmi, '');
+  sql = sql.replace(/^USE\s+`?[^`;\s]+`?;\s*$/gmi, '');
+  return sql;
+}
+
 async function importSql(sql) {
   let conn;
   try {
-    state = { status: 'running', message: `Importing ${sql.length} bytes`, verification: null, error: null };
+    state = { status: 'running', message: `Preparing ${sql.length} bytes`, verification: null, error: null };
     conn = await getConnection();
     const current = await verify(conn);
     if (current.tableCount > 0 && process.env.FORCE_IMPORT !== '1') {
       state = { status: 'success', message: 'Database already contains tables; import skipped and existing data verified', verification: current, error: null };
       return state;
     }
-    sql = sql.replace(/^CREATE DATABASE[^;]*;\s*$/gmi, '');
-    sql = sql.replace(/^USE\s+`?[^`;\s]+`?;\s*$/gmi, '');
+    if (process.env.FORCE_IMPORT === '1') await resetDatabase(conn);
+    sql = makeMysqlCompatible(sql);
+    state.message = `Executing SQL dump (${sql.length} bytes)`;
     await conn.query(sql);
     const verification = await verify(conn);
     state = { status: 'success', message: 'SQL dump imported and verified', verification, error: null };
@@ -66,8 +87,9 @@ function sqlFromEnvChunks() {
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   if (req.url === '/health' && req.method === 'GET') {
-    res.statusCode = state.status === 'failed' ? 500 : 200;
-    return res.end(JSON.stringify({ ok: state.status !== 'failed', status: state.status }));
+    // Health means the importer process is alive. Import result is reported separately at /status.
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: true, status: state.status }));
   }
   if (req.url === '/status' && req.method === 'GET') {
     res.statusCode = 200;
