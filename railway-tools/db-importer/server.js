@@ -38,7 +38,6 @@ async function resetDatabase(conn) {
 }
 
 function makeMysqlCompatible(sql) {
-  // cPanel dumps were produced by MariaDB. MySQL 9 rejects non-NULL defaults on TEXT/BLOB columns.
   sql = sql.replace(/\b((?:tiny|medium|long)?text|(?:tiny|medium|long)?blob)\s+DEFAULT\s+'(?:''|[^'])*'/gi, '$1');
   sql = sql.replace(/\b((?:tiny|medium|long)?text|(?:tiny|medium|long)?blob)\s+DEFAULT\s+"(?:""|[^"])*"/gi, '$1');
   sql = sql.replace(/^CREATE DATABASE[^;]*;\s*$/gmi, '');
@@ -50,10 +49,12 @@ async function importSql(sql) {
   let conn;
   try {
     state = { status: 'running', message: `Preparing ${sql.length} bytes`, verification: null, error: null };
+    console.log('[IMPORT] starting', JSON.stringify({ bytes: sql.length, db: process.env.DB_NAME, force: process.env.FORCE_IMPORT === '1' }));
     conn = await getConnection();
     const current = await verify(conn);
     if (current.tableCount > 0 && process.env.FORCE_IMPORT !== '1') {
       state = { status: 'success', message: 'Database already contains tables; import skipped and existing data verified', verification: current, error: null };
+      console.log('[IMPORT_RESULT]', JSON.stringify(state));
       return state;
     }
     if (process.env.FORCE_IMPORT === '1') await resetDatabase(conn);
@@ -62,10 +63,11 @@ async function importSql(sql) {
     await conn.query(sql);
     const verification = await verify(conn);
     state = { status: 'success', message: 'SQL dump imported and verified', verification, error: null };
+    console.log('[IMPORT_RESULT]', JSON.stringify(state));
     return state;
   } catch (err) {
     state = { status: 'failed', message: 'Import failed', verification: null, error: err && (err.stack || err.message) || String(err) };
-    console.error(state.error);
+    console.error('[IMPORT_RESULT]', JSON.stringify(state));
     return state;
   } finally {
     if (conn) try { await conn.end(); } catch (_) {}
@@ -81,13 +83,13 @@ function sqlFromEnvChunks() {
     parts.push(value);
   }
   if (!parts.length) return null;
+  console.log('[IMPORT] loaded SQL chunks', parts.length);
   return gunzipSync(Buffer.from(parts.join(''), 'base64')).toString('utf8');
 }
 
 const server = http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   if (req.url === '/health' && req.method === 'GET') {
-    // Health means the importer process is alive. Import result is reported separately at /status.
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: true, status: state.status }));
   }
@@ -127,11 +129,15 @@ server.listen(PORT, '0.0.0.0', async () => {
   if (process.env.AUTO_IMPORT === '1') {
     try {
       const sql = sqlFromEnvChunks();
-      if (!sql) state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL_DUMP_GZ_B64_001' };
-      else await importSql(sql);
+      if (!sql) {
+        state = { status: 'failed', message: 'AUTO_IMPORT enabled but no SQL chunks found', verification: null, error: 'missing SQL_DUMP_GZ_B64_001' };
+        console.error('[IMPORT_RESULT]', JSON.stringify(state));
+      } else {
+        await importSql(sql);
+      }
     } catch (err) {
       state = { status: 'failed', message: 'Failed to decode/import SQL chunks', verification: null, error: err && (err.stack || err.message) || String(err) };
-      console.error(state.error);
+      console.error('[IMPORT_RESULT]', JSON.stringify(state));
     }
   }
 });
